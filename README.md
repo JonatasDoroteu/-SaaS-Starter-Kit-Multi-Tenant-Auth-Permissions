@@ -7,6 +7,8 @@
 
 A practical starter for building multi-tenant SaaS applications with FastAPI, JWT authentication, organization-based access control, invites, and a simple React frontend.
 
+![SaaS Starter preview](assets/screenshot.png)
+
 ## Why this project exists
 
 This starter focuses on the core foundation of a SaaS product: authentication, tenant boundaries, organization membership, and invite-based onboarding. It is designed to be a strong starting point for building products that need multi-tenant isolation from day one.
