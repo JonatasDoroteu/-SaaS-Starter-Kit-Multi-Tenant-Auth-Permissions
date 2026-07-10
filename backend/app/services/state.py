@@ -8,6 +8,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import AsyncSessionLocal, engine
+from app.models.audit_event import AuditEvent
 from app.models.base import Base
 from app.models.invite import Invite
 from app.models.membership import Membership
@@ -102,6 +103,13 @@ class SqlAlchemyStore:
             await session.flush()
             membership = Membership(user_id=user.id, organization_id=organization.id, role="owner")
             session.add(membership)
+            audit_event = AuditEvent(
+                organization_id=organization.id,
+                actor_email=owner_email,
+                action="organization.created",
+                details=f"Created organization {name}",
+            )
+            session.add(audit_event)
             await session.commit()
             await session.refresh(organization)
             return {"id": organization.id, "name": organization.name}
@@ -138,7 +146,7 @@ class SqlAlchemyStore:
 
     async def can_manage_organization(self, email: str, organization_id: int) -> bool:
         membership = await self.get_membership(email, organization_id)
-        return membership is not None and membership["role"] == "owner"
+        return membership is not None and membership["role"] in {"owner", "admin"}
 
     async def create_invite(self, *, organization_id: int, email: str, role: str) -> dict[str, Any]:
         await self._ensure_initialized()
@@ -146,6 +154,14 @@ class SqlAlchemyStore:
             token = f"inv-{int(datetime.now(timezone.utc).timestamp())}"
             invite = Invite(token=token, organization_id=organization_id, email=email, role=role)
             session.add(invite)
+            await session.flush()
+            audit_event = AuditEvent(
+                organization_id=organization_id,
+                actor_email=email,
+                action="invite.created",
+                details=f"Invited {email} as {role}",
+            )
+            session.add(audit_event)
             await session.commit()
             await session.refresh(invite)
             return {
@@ -184,6 +200,13 @@ class SqlAlchemyStore:
                 membership = Membership(user_id=user.id, organization_id=invite.organization_id, role=invite.role)
                 session.add(membership)
             await session.delete(invite)
+            audit_event = AuditEvent(
+                organization_id=invite.organization_id,
+                actor_email=email,
+                action="invite.accepted",
+                details=f"Accepted invite for organization {invite.organization_id}",
+            )
+            session.add(audit_event)
             await session.commit()
             return {"status": "accepted", "organization_id": invite.organization_id}
 

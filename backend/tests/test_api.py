@@ -7,7 +7,10 @@ from sqlalchemy import select
 
 from app.db import AsyncSessionLocal
 from app.main import app
+from app.models.audit_event import AuditEvent
 from app.models.invite import Invite
+from app.models.membership import Membership
+from app.models.user import User
 from app.services.state import reset_store
 
 
@@ -133,6 +136,125 @@ def test_non_owner_cannot_create_invite() -> None:
         headers={
             "Authorization": f"Bearer {member_token}",
             "X-Organization-Id": str(org_id),
+        },
+    )
+    assert response.status_code == 403
+
+
+def test_admin_can_create_invite() -> None:
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": "owner@example.com", "password": "secret123"},
+    )
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": "admin@example.com", "password": "secret123"},
+    )
+    owner_token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@example.com", "password": "secret123"},
+    ).json()["access_token"]
+    admin_token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "admin@example.com", "password": "secret123"},
+    ).json()["access_token"]
+
+    org_response = client.post(
+        "/api/v1/organizations",
+        json={"name": "AdminOrg"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    )
+    org_id = org_response.json()["id"]
+
+    async def promote_to_admin() -> None:
+        async with AsyncSessionLocal() as session:
+            user = await session.scalar(select(User).where(User.email == "admin@example.com"))
+            membership = await session.scalar(
+                select(Membership).where(Membership.user_id == user.id, Membership.organization_id == org_id)
+            )
+            if membership is None:
+                membership = Membership(user_id=user.id, organization_id=org_id, role="admin")
+                session.add(membership)
+            else:
+                membership.role = "admin"
+            await session.commit()
+
+    asyncio.run(promote_to_admin())
+
+    response = client.post(
+        "/api/v1/organizations/invites",
+        json={"email": "member@example.com", "role": "member"},
+        headers={
+            "Authorization": f"Bearer {admin_token}",
+            "X-Organization-Id": str(org_id),
+        },
+    )
+    assert response.status_code == 201
+
+
+def test_create_organization_logs_audit_event() -> None:
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": "owner@example.com", "password": "secret123"},
+    )
+    token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@example.com", "password": "secret123"},
+    ).json()["access_token"]
+
+    response = client.post(
+        "/api/v1/organizations",
+        json={"name": "AuditOrg"},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+
+    assert response.status_code == 201
+
+    async def fetch_events() -> list[AuditEvent]:
+        async with AsyncSessionLocal() as session:
+            events = await session.scalars(select(AuditEvent).where(AuditEvent.organization_id == response.json()["id"]))
+            return list(events.all())
+
+    events = asyncio.run(fetch_events())
+    assert len(events) == 1
+    assert events[0].action == "organization.created"
+
+
+def test_cross_tenant_access_is_blocked() -> None:
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": "owner1@example.com", "password": "secret123"},
+    )
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": "owner2@example.com", "password": "secret123"},
+    )
+    owner1_token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner1@example.com", "password": "secret123"},
+    ).json()["access_token"]
+
+    org_a = client.post(
+        "/api/v1/organizations",
+        json={"name": "OrgA"},
+        headers={"Authorization": f"Bearer {owner1_token}"},
+    ).json()
+
+    owner2_token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner2@example.com", "password": "secret123"},
+    ).json()["access_token"]
+    org_b = client.post(
+        "/api/v1/organizations",
+        json={"name": "OrgB"},
+        headers={"Authorization": f"Bearer {owner2_token}"},
+    ).json()
+
+    response = client.get(
+        "/api/v1/organizations",
+        headers={
+            "Authorization": f"Bearer {owner1_token}",
+            "X-Organization-Id": str(org_b["id"]),
         },
     )
     assert response.status_code == 403

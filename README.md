@@ -19,6 +19,7 @@ A starter kit for building **multi-tenant SaaS applications** with **FastAPI**, 
 - ✅ Invite Users to Organizations
 - ✅ Tenant Data Isolation
 - ✅ Role-Based Access Control (RBAC)
+- ✅ Audit Events for Key Actions
 - ✅ Async SQLAlchemy
 - ✅ Alembic Database Migrations
 - ✅ Docker & Docker Compose
@@ -26,15 +27,25 @@ A starter kit for building **multi-tenant SaaS applications** with **FastAPI**, 
 
 ---
 
-## 📸 Screenshots
+## 🧠 Design Decisions
 
-### Login
+### Tenant isolation strategy
+This starter adopts a shared-database approach with explicit organization context and membership checks. It is a practical default for early-stage SaaS products because it keeps the system simpler to build, operate, and evolve while still enforcing tenant boundaries. A future step could be moving to schema-per-tenant or database-per-tenant if the product grows.
 
-![Login](screenshots/login.png)
+### RBAC model
+The access model currently uses roles such as owner, admin, and member. This is a more realistic foundation than a single fixed role because it allows the product to express different levels of operational authority inside an organization.
 
-### Dashboard
+### Invite flow
+Invites are issued as short-lived tokens, validated on acceptance, and tied to organization membership. This creates a safer onboarding flow than a simple open join mechanism and makes the invitation lifecycle easier to reason about.
 
-![Dashboard](screenshots/dashboard.png)
+### Security and testing
+The backend includes regression tests for cross-tenant access, authorization failures, invite expiration, and audit event creation. These tests are meant to show that tenant boundaries are not just implemented, but actively protected.
+
+---
+
+## 📸 Preview
+
+![SaaS Starter preview](assets/screenshot.png)
 
 ---
 
