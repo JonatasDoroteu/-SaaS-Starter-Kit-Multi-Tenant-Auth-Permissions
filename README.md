@@ -1,105 +1,126 @@
 # SaaS Starter Kit — Multi-Tenant Auth & Permissions
 
-![Python](https://img.shields.io/badge/Python-3.12%2B-blue)
-![FastAPI](https://img.shields.io/badge/FastAPI-0.111%2B-009688)
-![React](https://img.shields.io/badge/React-18-61DAFB)
-![License](https://img.shields.io/badge/License-MIT-green)
+Um starter para aplicações SaaS multi-tenant, com foco em autenticação, isolamento de dados entre organizações e controle de acesso baseado em papéis (RBAC).
 
-A starter kit for building **multi-tenant SaaS applications** with **FastAPI**, **React**, JWT authentication, organization-based access control, invitations, and tenant isolation.
+O objetivo é construir uma base sólida usando conceitos presentes em aplicações SaaS modernas — arquitetura organizada, segura e preparada para evoluir.
 
----
+> 🚧 Projeto em desenvolvimento ativo. Feedbacks e sugestões são sempre bem-vindos!
 
-## ✨ Features
+📸 Preview 
+## Login
 
-- ✅ JWT Authentication
-- ✅ User Registration & Login
-- ✅ Multi-Tenant Architecture
-- ✅ Organization Management
-- ✅ Membership Management
-- ✅ Invite Users to Organizations
-- ✅ Tenant Data Isolation
-- ✅ Role-Based Access Control (RBAC)
-- ✅ Audit Events for Key Actions
-- ✅ Async SQLAlchemy
-- ✅ Alembic Database Migrations
-- ✅ Docker & Docker Compose
-- ✅ React + Vite Frontend
+![Login](screenshots/login.png)
 
----
+## Dashboard
 
-## 🧠 Design Decisions
+![Dashboard](screenshots/dashboard.png)
 
-### Tenant isolation strategy
-This starter adopts a shared-database approach with explicit organization context and membership checks. It is a practical default for early-stage SaaS products because it keeps the system simpler to build, operate, and evolve while still enforcing tenant boundaries. A future step could be moving to schema-per-tenant or database-per-tenant if the product grows.
+## ✅ O que o projeto já oferece
 
-### RBAC model
-The access model currently uses roles such as owner, admin, and member. This is a more realistic foundation than a single fixed role because it allows the product to express different levels of operational authority inside an organization.
-
-### Invite flow
-Invites are issued as short-lived tokens, validated on acceptance, and tied to organization membership. This creates a safer onboarding flow than a simple open join mechanism and makes the invitation lifecycle easier to reason about.
-
-### Security and testing
-The backend includes regression tests for cross-tenant access, authorization failures, invite expiration, and audit event creation. These tests are meant to show that tenant boundaries are not just implemented, but actively protected.
+- Arquitetura multi-tenant com isolamento de dados por organização
+- Autenticação segura utilizando JWT (access token de vida curta + refresh token opaco e revogável)
+- Backend assíncrono com **FastAPI** + **SQLAlchemy 2.0 (Async)**
+- Frontend desenvolvido com **React** + **Vite**
+- Gerenciamento de organizações, memberships e convites de usuários
+- Sistema de convites com:
+  - token único
+  - expiração
+  - validação e aceite do convite
+- Controle de acesso baseado em papéis (RBAC):
+  - `Owner`
+  - `Admin`
+  - `Member`
+- Administradores podem convidar novos membros
+- Auditoria básica registrando eventos como:
+  - criação de organizações
+  - criação de convites
+  - aceite de convites
 
 ---
 
-## 📸 Preview
+## 🔎 Evidência verificada
 
-![SaaS Starter preview](assets/screenshot.png)
+A suíte de testes do backend foi executada com sucesso:
+
+```bash
+pytest -q
+```
+
+**Resultado:** ✅ 9 testes passaram
+
+Os testes validam os principais fluxos implementados, incluindo:
+- isolamento de dados entre organizações
+- regras de autorização por role
+- criação e aceitação de convites
 
 ---
 
-## 🛠 Tech Stack
+## 🛠️ Stack utilizada
 
-### Backend
-
+**Backend**
+- Python
 - FastAPI
 - SQLAlchemy 2.0 (Async)
-- Pydantic
-- Alembic
-- JWT Authentication
-- Passlib (Password Hashing)
+- JWT (`python-jose`)
+- Pytest
+- Alembic (migrations)
+- SQLite (desenvolvimento)
 
-### Frontend
-
+**Frontend**
 - React
 - Vite
 
-### Database
+---
 
-- SQLite (development)
-- Ready for PostgreSQL
+## 📂 Estrutura do projeto
 
-### DevOps
-
-- Docker
-- Docker Compose
+```
+.
+├── backend/
+│   ├── app/
+│   │   ├── api/routes/       # endpoints (auth, organizations, invites, health)
+│   │   ├── core/             # config e segurança (JWT, hashing)
+│   │   ├── models/           # models SQLAlchemy (User, Organization, Membership, Invite, ...)
+│   │   ├── schemas/          # schemas Pydantic
+│   │   ├── services/         # regras de negócio e acesso a dados
+│   │   └── main.py
+│   ├── alembic/ / migrations/
+│   ├── tests/
+│   └── requirements.txt
+├── frontend/
+│   ├── src/                  # App React + Vite
+│   ├── index.html
+│   └── package.json
+└── docker-compose.yml
+```
 
 ---
 
-## 📁 Project Structure
+## 🚀 Rodando localmente
 
-```
-backend/
-    app/
-    tests/
-    Dockerfile
-
-frontend/
-docker-compose.yml
-README.md
-```
-
----
-
-## 🚀 Run Locally
+### Pré-requisitos
+- Python 3.11+
+- Node.js 18+
 
 ### Backend
 
 ```bash
 cd backend
+python -m venv .venv
+.venv\Scripts\activate      # Windows
+# source .venv/bin/activate # Linux/Mac
+
 pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
+uvicorn app.main:app --reload
+```
+
+O backend sobe em `http://127.0.0.1:8000`. Documentação interativa (Swagger) disponível em `http://127.0.0.1:8000/docs`.
+
+Um usuário de demonstração é criado automaticamente ao iniciar o servidor:
+
+```
+email: demo@example.com
+senha: secret123
 ```
 
 ### Frontend
@@ -107,49 +128,38 @@ python -m uvicorn app.main:app --reload --host 127.0.0.1 --port 8001
 ```bash
 cd frontend
 npm install
-npm run dev -- --host 127.0.0.1 --port 3000
+npm run dev
 ```
 
-### Docker
+O frontend sobe em `http://localhost:3000`.
 
-```bash
-docker compose up --build
-```
+> ⚠️ Backend e frontend precisam estar rodando **ao mesmo tempo**, em terminais separados. O CORS já está configurado para aceitar requisições vindas de `http://localhost:3000`.
 
----
-
-## 🔑 Demo Credentials
-
-```
-Email: demo@example.com
-Password: secret123
-```
-
----
-
-## 🧪 Running Tests
+### Testes
 
 ```bash
 cd backend
-pytest
+pytest -q
 ```
 
 ---
 
-## 🗺 Roadmap
+## 🔹 Próximos passos
 
-- PostgreSQL support
-- Complete Alembic migrations
-- CI/CD with GitHub Actions
-- Automated tests expansion
-- Billing module
-- Admin dashboard
-- Organization roles & permissions
-- Email invitation workflow
-- Production deployment
+- [ ] Migração para PostgreSQL em produção
+- [ ] Docker e Docker Compose completos
+- [ ] Pipeline de CI/CD com GitHub Actions
+- [ ] Expansão da cobertura de testes
+- [ ] Sistema de permissões mais granular, independente das roles
+- [ ] Evolução do sistema de convites (reenvio, recusa, notificações por e-mail e histórico)
+- [ ] Auditoria mais robusta e consultável
 
 ---
 
-## 📌 About
+## 🧠 Sobre o projeto
 
-This project was created as a practical foundation for building **modern multi-tenant SaaS applications**. It demonstrates concepts commonly used in production systems, including authentication, tenant isolation, organization management, invitations, and scalable backend architecture.
+O projeto ainda está em desenvolvimento, mas já evoluiu para uma base próxima da arquitetura utilizada em aplicações SaaS reais, explorando conceitos como multi-tenancy, autenticação, autorização e boas práticas de backend.
+
+---
+
+`#Python` `#FastAPI` `#React` `#Vite` `#SQLAlchemy` `#JWT` `#RBAC` `#SaaS` `#Backend` `#SoftwareEngineering` `#APIs` `#MultiTenant` `#Docker` `#PostgreSQL` `#GitHub` `#OpenSource` `#WebDevelopment`
