@@ -1,18 +1,28 @@
 from __future__ import annotations
 
-from datetime import datetime
+from sqlalchemy import Enum as SAEnum, ForeignKey, UniqueConstraint
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from sqlalchemy import DateTime, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.models.base import Base
+from app.models.base import Base, TimestampMixin
+from app.models.role import Role
 
 
-class Membership(Base):
+class Membership(TimestampMixin, Base):
     __tablename__ = "memberships"
+    __table_args__ = (
+        UniqueConstraint("user_id", "organization_id", name="uq_membership_user_org"),
+    )
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), nullable=False)
-    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False)
-    role: Mapped[str] = mapped_column(String(20), default="member")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    user_id: Mapped[int] = mapped_column(
+        ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    role: Mapped[Role] = mapped_column(
+        SAEnum(Role, native_enum=False, length=20), default=Role.member, nullable=False
+    )
+
+    user: Mapped["User"] = relationship(back_populates="memberships")
+    organization: Mapped["Organization"] = relationship(back_populates="memberships")

@@ -1,19 +1,26 @@
 from __future__ import annotations
 
-from datetime import datetime
+from sqlalchemy import ForeignKey, String
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
-from sqlalchemy import DateTime, ForeignKey, String
-from sqlalchemy.orm import Mapped, mapped_column
-
-from app.models.base import Base
+from app.models.base import Base, TimestampMixin
 
 
-class AuditEvent(Base):
+class AuditEvent(TimestampMixin, Base):
     __tablename__ = "audit_events"
 
     id: Mapped[int] = mapped_column(primary_key=True, autoincrement=True)
-    organization_id: Mapped[int] = mapped_column(ForeignKey("organizations.id"), nullable=False)
-    actor_email: Mapped[str] = mapped_column(String(255), nullable=False)
-    action: Mapped[str] = mapped_column(String(100), nullable=False)
+    organization_id: Mapped[int] = mapped_column(
+        ForeignKey("organizations.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    # Trocado de actor_email (str) para actor_id (FK). Guardar só o e-mail
+    # "congela" um dado que pode mudar (usuário troca de e-mail) e não
+    # sobrevive à exclusão do usuário. Se precisar exibir o e-mail no log,
+    # resolve via join com User na hora de listar.
+    actor_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True
+    )
+    action: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
     details: Mapped[str | None] = mapped_column(String(500), nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+
+    organization: Mapped["Organization"] = relationship(back_populates="audit_events")

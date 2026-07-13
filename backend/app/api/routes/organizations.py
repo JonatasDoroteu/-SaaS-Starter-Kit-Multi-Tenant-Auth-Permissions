@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Header, HTTPException, status
 
-from app.core.security import decode_token
+from app.core.security import decode_access_token
 from app.schemas.organization import InviteRequest, InviteResponse, OrganizationCreateRequest, OrganizationResponse
 from app.services.state import store
 
@@ -15,13 +15,13 @@ async def list_organizations(
     if x_organization_id is None:
         if not authorization or not authorization.startswith("Bearer "):
             raise HTTPException(status_code=401, detail="Authorization header is required")
-        owner_email = str(decode_token(authorization.split(" ", 1)[1])["sub"])
+        owner_email = str(decode_access_token(authorization.split(" ", 1)[1])["sub"])
         organizations = await store.list_organizations_for_user(owner_email)
         return [OrganizationResponse(id=org["id"], name=org["name"]) for org in organizations]
 
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Authorization header is required")
-    owner_email = str(decode_token(authorization.split(" ", 1)[1])["sub"])
+    owner_email = str(decode_access_token(authorization.split(" ", 1)[1])["sub"])
     membership = await store.get_membership(owner_email, x_organization_id)
     if membership is None:
         raise HTTPException(status_code=403, detail="You are not a member of this organization")
@@ -39,7 +39,7 @@ async def create_organization(
 ) -> OrganizationResponse:
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Authorization header is required")
-    owner_email = str(decode_token(authorization.split(" ", 1)[1])["sub"])
+    owner_email = str(decode_access_token(authorization.split(" ", 1)[1])["sub"])
     organization = await store.create_organization(payload.name, owner_email)
     return OrganizationResponse(id=organization["id"], name=organization["name"])
 
@@ -55,7 +55,7 @@ async def create_invite(
     if not authorization or not authorization.startswith("Bearer "):
         raise HTTPException(status_code=401, detail="Authorization header is required")
 
-    owner_email = str(decode_token(authorization.split(" ", 1)[1])["sub"])
+    owner_email = str(decode_access_token(authorization.split(" ", 1)[1])["sub"])
     if not await store.can_manage_organization(owner_email, x_organization_id):
         raise HTTPException(status_code=403, detail="Only organization owners can create invites")
 

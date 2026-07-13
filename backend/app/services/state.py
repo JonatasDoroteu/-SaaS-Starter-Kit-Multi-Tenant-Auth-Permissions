@@ -14,7 +14,7 @@ from app.models.invite import Invite
 from app.models.membership import Membership
 from app.models.organization import Organization
 from app.models.user import User
-from app.core.security import decode_token, hash_password
+from app.core.security import decode_access_token, hash_password
 
 
 async def initialize_database() -> None:
@@ -51,20 +51,24 @@ class SqlAlchemyStore:
         await initialize_database()
         self._initialized = True
 
-    async def add_user(self, email: str, password_hash: str) -> dict[str, Any]:
+    async def add_user(self, email: str, password_hash: str, full_name: str | None = None) -> dict[str, Any]:
         await self._ensure_initialized()
         async with self.session_factory() as session:
             existing = await session.scalar(select(User).where(User.email == email))
             if existing is not None:
                 return {"email": existing.email, "password_hash": existing.hashed_password}
-            user = User(email=email, hashed_password=password_hash)
+            user = User(
+                email=email,
+                hashed_password=password_hash,
+                full_name=full_name or email.split("@")[0],
+            )
             session.add(user)
             await session.commit()
             await session.refresh(user)
             return {"email": user.email, "password_hash": user.hashed_password}
 
     async def seed_demo_user(self) -> None:
-        await self.add_user("demo@example.com", hash_password("secret123"))
+        await self.add_user("demo@example.com", hash_password("secret123"), full_name="Demo User")
 
     async def get_user(self, email: str) -> dict[str, Any] | None:
         await self._ensure_initialized()
@@ -76,7 +80,7 @@ class SqlAlchemyStore:
 
     async def get_current_user_from_token(self, token: str) -> str | None:
         try:
-            payload = decode_token(token)
+            payload = decode_access_token(token)
             return str(payload.get("sub")) if payload.get("sub") else None
         except Exception:
             return None
@@ -94,7 +98,11 @@ class SqlAlchemyStore:
         async with self.session_factory() as session:
             user = await session.scalar(select(User).where(User.email == owner_email))
             if user is None:
-                user = User(email=owner_email, hashed_password="")
+                user = User(
+                    email=owner_email,
+                    hashed_password="",
+                    full_name=owner_email.split("@")[0],
+                )
                 session.add(user)
                 await session.flush()
 
