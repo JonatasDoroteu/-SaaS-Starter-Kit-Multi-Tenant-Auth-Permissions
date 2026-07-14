@@ -1,19 +1,24 @@
 # SaaS Starter Kit — Multi-Tenant Auth & Permissions
 
-Um starter para aplicações SaaS multi-tenant, com foco em autenticação, isolamento de dados entre organizações e controle de acesso baseado em papéis (RBAC).
+Um starter para aplicações SaaS multi-tenant, com foco em autenticação, isolamento de dados entre organizações, controle de acesso baseado em papéis (RBAC), cotas de uso por plano e emissão segura de chaves de API.
 
 O objetivo é construir uma base sólida usando conceitos presentes em aplicações SaaS modernas — arquitetura organizada, segura e preparada para evoluir.
 
 > 🚧 Projeto em desenvolvimento ativo. Feedbacks e sugestões são sempre bem-vindos!
 
-📸 Preview 
-## Login
-
-![Login](screenshots/login.png)
+📸 Preview
 
 ## Dashboard
 
 ![Dashboard](screenshots/dashboard.png)
+
+## Usage & Quotas
+
+![Usage](screenshots/usage.png)
+
+## API Keys
+
+![API Keys](screenshots/api.png)
 
 ## ✅ O que o projeto já oferece
 
@@ -31,10 +36,18 @@ O objetivo é construir uma base sólida usando conceitos presentes em aplicaç�
   - `Admin`
   - `Member`
 - Administradores podem convidar novos membros
+- **Cotas de uso por plano** — cada organização tem um plano (`free`, `pro`) com limite mensal de uso de uma feature, calculado por período corrente e bloqueando a ação ao atingir o limite
+- **API Keys** — emissão de chaves (`sk_live_...`) para autenticação de integrações externas:
+  - a chave completa só é exibida uma única vez, no momento da criação
+  - apenas o hash (SHA-256) é persistido — a chave nunca pode ser recuperada, somente revogada
+  - listagem mostra só o prefixo mascarado, nunca a chave completa
+  - revogação idempotente (chamar revoke em uma chave já revogada não gera erro)
 - Auditoria básica registrando eventos como:
   - criação de organizações
   - criação de convites
   - aceite de convites
+  - emissão e revogação de API Keys
+- Schema do banco gerenciado inteiramente pelo **Alembic** — o servidor não recria mais as tabelas automaticamente no boot (uma decisão de segurança: evita perda acidental de dados a cada restart)
 
 ---
 
@@ -52,6 +65,7 @@ Os testes validam os principais fluxos implementados, incluindo:
 - isolamento de dados entre organizações
 - regras de autorização por role
 - criação e aceitação de convites
+- bloqueio de uso ao atingir a cota mensal
 
 ---
 
@@ -63,12 +77,13 @@ Os testes validam os principais fluxos implementados, incluindo:
 - SQLAlchemy 2.0 (Async)
 - JWT (`python-jose`)
 - Pytest
-- Alembic (migrations)
-- SQLite (desenvolvimento)
+- Alembic (migrations — única fonte de verdade do schema)
+- SQLite (desenvolvimento) / PostgreSQL (produção)
 
 **Frontend**
 - React
 - Vite
+- Sistema de design próprio (CSS puro, sem framework de UI): paleta neutra fria com um único accent de sinalização, tipografia Space Grotesk + IBM Plex Mono
 
 ---
 
@@ -78,17 +93,23 @@ Os testes validam os principais fluxos implementados, incluindo:
 .
 ├── backend/
 │   ├── app/
-│   │   ├── api/routes/       # endpoints (auth, organizations, invites, health)
-│   │   ├── core/             # config e segurança (JWT, hashing)
-│   │   ├── models/           # models SQLAlchemy (User, Organization, Membership, Invite, ...)
-│   │   ├── schemas/          # schemas Pydantic
-│   │   ├── services/         # regras de negócio e acesso a dados
+│   │   ├── api/
+│   │   │   ├── deps.py           # autenticação compartilhada (get_authenticated_email)
+│   │   │   └── routes/           # endpoints (auth, organizations, invites, usage, api_keys, health)
+│   │   ├── core/                 # config e segurança (JWT, refresh token, API keys, hashing)
+│   │   ├── models/                # models SQLAlchemy (User, Organization, Membership, Invite, UsageRecord, ApiKey, ...)
+│   │   ├── schemas/               # schemas Pydantic
+│   │   ├── services/               # regras de negócio (quota, state) e acesso a dados
 │   │   └── main.py
-│   ├── alembic/ / migrations/
+│   ├── alembic/                    # migrations (fonte única de verdade do schema)
 │   ├── tests/
 │   └── requirements.txt
 ├── frontend/
-│   ├── src/                  # App React + Vite
+│   ├── src/
+│   │   ├── App.jsx
+│   │   ├── UsagePanel.jsx         # painel de cotas de uso
+│   │   ├── ApiKeysPanel.jsx       # painel de emissão/revogação de API Keys
+│   │   └── styles.css
 │   ├── index.html
 │   └── package.json
 └── docker-compose.yml
@@ -111,6 +132,7 @@ python -m venv .venv
 # source .venv/bin/activate # Linux/Mac
 
 pip install -r requirements.txt
+alembic upgrade head         # aplica o schema — obrigatório antes do primeiro start
 uvicorn app.main:app --reload
 ```
 
@@ -149,7 +171,9 @@ pytest -q
 - [ ] Migração para PostgreSQL em produção
 - [ ] Docker e Docker Compose completos
 - [ ] Pipeline de CI/CD com GitHub Actions
-- [ ] Expansão da cobertura de testes
+- [ ] Expansão da cobertura de testes (incluindo o fluxo completo de API Keys)
+- [ ] Rate limiting por API Key
+- [ ] Escopos/permissões granulares por chave (hoje uma chave tem acesso total à organização)
 - [ ] Sistema de permissões mais granular, independente das roles
 - [ ] Evolução do sistema de convites (reenvio, recusa, notificações por e-mail e histórico)
 - [ ] Auditoria mais robusta e consultável
@@ -158,7 +182,12 @@ pytest -q
 
 ## 🧠 Sobre o projeto
 
-O projeto ainda está em desenvolvimento, mas já evoluiu para uma base próxima da arquitetura utilizada em aplicações SaaS reais, explorando conceitos como multi-tenancy, autenticação, autorização e boas práticas de backend.
+O projeto ainda está em desenvolvimento, mas já evoluiu para uma base próxima da arquitetura utilizada em aplicações SaaS reais, explorando conceitos como multi-tenancy, autenticação, autorização, cotas de uso por plano, emissão segura de credenciais e boas práticas de backend.
+
+Duas decisões técnicas que valeram a pena destacar:
+
+- **Refresh token e API Keys não são JWT** — são valores aleatórios de alta entropia, persistidos apenas como hash. Isso permite revogação imediata (algo que um JWT sozinho não garante bem, já que é válido até expirar) e elimina o risco de um segredo em texto puro vazar do banco.
+- **O schema do banco é gerenciado só pelo Alembic** — numa versão anterior, o próprio app recriava as tabelas a cada subida do servidor, um atalho conveniente em desenvolvimento solo mas destrutivo em qualquer ambiente real. Corrigido para que toda mudança de schema passe por uma migração versionada.
 
 ---
 
