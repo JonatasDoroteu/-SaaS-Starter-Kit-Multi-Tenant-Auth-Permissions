@@ -1,3 +1,8 @@
+import os
+import sys
+
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
+
 from logging.config import fileConfig
 
 from alembic import context
@@ -6,7 +11,15 @@ from sqlalchemy.ext.asyncio import create_async_engine
 
 from app.core.config import get_settings
 from app.models.base import Base
-from app.models import membership, organization, user  # noqa: F401
+from app.models import (  # noqa: F401
+    membership,
+    organization,
+    user,
+    invite,
+    audit_event,
+    usage,
+    api_key,
+)
 
 config = context.config
 if config.config_file_name is not None:
@@ -14,7 +27,6 @@ if config.config_file_name is not None:
 
 settings = get_settings()
 config.set_main_option("sqlalchemy.url", settings.database_url)
-
 target_metadata = Base.metadata
 
 
