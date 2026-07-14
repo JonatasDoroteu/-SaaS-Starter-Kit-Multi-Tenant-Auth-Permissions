@@ -3,10 +3,9 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 from typing import Any
-
+from app.models.api_key import ApiKey
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
-
 from app.db import AsyncSessionLocal, engine
 from app.models.audit_event import AuditEvent
 from app.models.base import Base
@@ -14,13 +13,23 @@ from app.models.invite import Invite
 from app.models.membership import Membership
 from app.models.organization import Organization
 from app.models.user import User
-from app.core.security import decode_access_token, hash_password
+from app.core.security import (
+    decode_access_token,
+    hash_password,
+    generate_api_key,
+    hash_api_key,
+)
+from app.models.usage import UsageRecord
+from app.services.quota import PLAN_LIMITS, current_period
 
 
 async def initialize_database() -> None:
+    """Não gerencia mais o schema (isso é responsabilidade do Alembic, via
+    'alembic upgrade head'). Aqui só garantimos que a conexão funciona --
+    se as tabelas não existirem ainda, é sinal de que a migração não foi
+    rodada, e é melhor falhar alto a esconder isso recriando o banco."""
     async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.drop_all)
-        await conn.run_sync(Base.metadata.create_all)
+        await conn.run_sync(lambda sync_conn: None)
 
 
 class SqlAlchemyStore:
@@ -113,7 +122,7 @@ class SqlAlchemyStore:
             session.add(membership)
             audit_event = AuditEvent(
                 organization_id=organization.id,
-                actor_email=owner_email,
+                actor_id=user.id,
                 action="organization.created",
                 details=f"Created organization {name}",
             )
@@ -156,6 +165,66 @@ class SqlAlchemyStore:
         membership = await self.get_membership(email, organization_id)
         return membership is not None and membership["role"] in {"owner", "admin"}
 
+    async def check_and_increment_usage(
+        self, organization_id: int, feature: str = "ai_analysis"
+    ) -> dict[str, Any]:
+        await self._ensure_initialized()
+        async with self.session_factory() as session:
+            organization = await session.get(Organization, organization_id)
+            if organization is None:
+                raise ValueError("Organization not found")
+
+            period = current_period()
+            limit = PLAN_LIMITS.get(organization.plan, PLAN_LIMITS["free"])
+
+            record = await session.scalar(
+                select(UsageRecord).where(
+                    UsageRecord.organization_id == organization_id,
+                    UsageRecord.feature == feature,
+                    UsageRecord.period == period,
+                )
+            )
+            current_count = record.count if record else 0
+
+            if limit is not None and current_count >= limit:
+                return {"allowed": False, "count": current_count, "limit": limit, "plan": organization.plan}
+
+            if record:
+                record.count += 1
+            else:
+                record = UsageRecord(
+                    organization_id=organization_id, feature=feature, period=period, count=1
+                )
+                session.add(record)
+
+            await session.commit()
+            return {"allowed": True, "count": record.count, "limit": limit, "plan": organization.plan}
+
+    async def get_usage(self, organization_id: int) -> dict[str, Any]:
+        await self._ensure_initialized()
+        async with self.session_factory() as session:
+            organization = await session.get(Organization, organization_id)
+            if organization is None:
+                raise ValueError("Organization not found")
+
+            period = current_period()
+            records = (
+                await session.scalars(
+                    select(UsageRecord).where(
+                        UsageRecord.organization_id == organization_id,
+                        UsageRecord.period == period,
+                    )
+                )
+            ).all()
+
+            limit = PLAN_LIMITS.get(organization.plan, PLAN_LIMITS["free"])
+            return {
+                "plan": organization.plan,
+                "period": period,
+                "limit": limit,
+                "usage": [{"feature": r.feature, "count": r.count} for r in records],
+            }
+
     async def create_invite(self, *, organization_id: int, email: str, role: str) -> dict[str, Any]:
         await self._ensure_initialized()
         async with self.session_factory() as session:
@@ -165,7 +234,7 @@ class SqlAlchemyStore:
             await session.flush()
             audit_event = AuditEvent(
                 organization_id=organization_id,
-                actor_email=email,
+                actor_id=None,
                 action="invite.created",
                 details=f"Invited {email} as {role}",
             )
@@ -178,7 +247,70 @@ class SqlAlchemyStore:
                 "email": invite.email,
                 "role": invite.role,
             }
+    async def create_api_key(self, organization_id: int, name: str) -> dict[str, Any]:
+        await self._ensure_initialized()
+        async with self.session_factory() as session:
+            organization = await session.get(Organization, organization_id)
+            if organization is None:
+                raise ValueError("Organization not found")
 
+            raw_key = generate_api_key()
+            api_key = ApiKey(
+                organization_id=organization_id,
+                name=name,
+                prefix=raw_key[:16],
+                hashed_key=hash_api_key(raw_key),
+            )
+            session.add(api_key)
+            audit_event = AuditEvent(
+                organization_id=organization_id,
+                actor_id=None,
+                action="api_key.created",
+                details=f"Created API key '{name}'",
+            )
+            session.add(audit_event)
+            await session.commit()
+            await session.refresh(api_key)
+            return {
+                "id": api_key.id,
+                "name": api_key.name,
+                "prefix": api_key.prefix,
+                "api_key": raw_key,
+                "created_at": api_key.created_at,
+            }
+
+    async def list_api_keys(self, organization_id: int) -> list[dict[str, Any]]:
+        await self._ensure_initialized()
+        async with self.session_factory() as session:
+            keys = (
+                await session.scalars(
+                    select(ApiKey).where(ApiKey.organization_id == organization_id)
+                )
+            ).all()
+            return [
+                {
+                    "id": k.id,
+                    "name": k.name,
+                    "prefix": k.prefix,
+                    "created_at": k.created_at,
+                    "last_used_at": k.last_used_at,
+                    "revoked_at": k.revoked_at,
+                }
+                for k in keys
+            ]
+
+    async def revoke_api_key(self, organization_id: int, key_id: int) -> bool:
+        await self._ensure_initialized()
+        async with self.session_factory() as session:
+            api_key = await session.get(ApiKey, key_id)
+            if api_key is None or api_key.organization_id != organization_id:
+                return False
+            if api_key.revoked_at is not None:
+                return True  # já revogada, idempotente
+            api_key.revoked_at = datetime.now(timezone.utc)
+            await session.commit()
+            return True
+        
     async def accept_invite(self, token: str, email: str) -> dict[str, Any] | None:
         await self._ensure_initialized()
         async with self.session_factory() as session:
@@ -210,7 +342,7 @@ class SqlAlchemyStore:
             await session.delete(invite)
             audit_event = AuditEvent(
                 organization_id=invite.organization_id,
-                actor_email=email,
+                actor_id=user.id,
                 action="invite.accepted",
                 details=f"Accepted invite for organization {invite.organization_id}",
             )

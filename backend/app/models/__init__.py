@@ -6,6 +6,8 @@ from app.models.invite import Invite, InviteStatus
 from app.models.audit_event import AuditEvent
 from app.models.refresh_token import RefreshToken
 from app.models.role import Role
+from app.models.usage import UsageRecord
+from app.models.api_key import ApiKey
 
 __all__ = [
     "Base",
@@ -19,4 +21,6 @@ __all__ = [
     "Invite",
     "InviteStatus",
     "AuditEvent",
+    "UsageRecord",
+    "ApiKey",
 ]
