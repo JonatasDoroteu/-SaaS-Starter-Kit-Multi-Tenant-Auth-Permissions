@@ -1,4 +1,6 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import UsagePanel from './UsagePanel';
+import ApiKeysPanel from './ApiKeysPanel';
 
 const API_URL = 'http://127.0.0.1:8000';
 
@@ -9,8 +11,11 @@ function App() {
   const [orgName, setOrgName] = useState('');
   const [token, setToken] = useState(localStorage.getItem('token') || '');
   const [orgs, setOrgs] = useState([]);
+  const [selectedOrgId, setSelectedOrgId] = useState(null);
   const [message, setMessage] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const usagePanelRef = useRef(null);
 
   useEffect(() => {
     if (!token) return;
@@ -21,6 +26,12 @@ function App() {
       .then((data) => setOrgs(data))
       .catch(() => setOrgs([]));
   }, [token]);
+
+  useEffect(() => {
+    if (selectedOrgId && usagePanelRef.current) {
+      usagePanelRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }, [selectedOrgId]);
 
   const handleAuth = async (event) => {
     event.preventDefault();
@@ -61,6 +72,7 @@ function App() {
     const data = await response.json();
     if (response.ok) {
       setOrgs((prev) => [...prev, data]);
+      setSelectedOrgId(data.id);
       setOrgName('');
       setMessage('Organization created');
     } else {
@@ -70,6 +82,7 @@ function App() {
 
   return (
     <div className="app-shell">
+      <span className="app-eyebrow">Multi-tenant infrastructure</span>
       <h1>SaaS Starter</h1>
       <p>Multi-tenant auth, organizations and invites in one place.</p>
 
@@ -93,7 +106,27 @@ function App() {
 
           <div className="card">
             <h2>Your organizations</h2>
-            {orgs.length === 0 ? <p>No organizations yet.</p> : <ul>{orgs.map((org) => <li key={org.id}>{org.name}</li>)}</ul>}
+            {orgs.length === 0 ? (
+              <p>No organizations yet.</p>
+            ) : (
+              <ul>
+                {orgs.map((org) => (
+                  <li
+                    key={org.id}
+                    onClick={() => setSelectedOrgId(org.id)}
+                    className={`org-item ${selectedOrgId === org.id ? 'selected' : ''}`}
+                  >
+                    {org.name}
+                    {selectedOrgId === org.id ? <span className="tag">Active</span> : null}
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+
+          <div ref={usagePanelRef}>
+            <UsagePanel token={token} organizationId={selectedOrgId} />
+            <ApiKeysPanel token={token} organizationId={selectedOrgId} />
           </div>
         </>
       )}
