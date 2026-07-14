@@ -75,3 +75,17 @@ def hash_refresh_token(raw_token: str) -> str:
 def refresh_token_expires_at() -> datetime:
     settings = get_settings()
     return datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_ttl_days)
+# --- API Keys (mesmo raciocínio do refresh token: opaca, hash salvo) -----
+
+def generate_api_key() -> str:
+    """Gera uma chave no formato sk_live_<random>. O prefixo fixo ajuda a
+    identificar o tipo de credencial em logs e em scanners de segredo (o
+    GitHub secret scanning, por exemplo, reconhece padrões de prefixo)."""
+    return f"sk_live_{secrets.token_urlsafe(32)}"
+
+
+def hash_api_key(raw_key: str) -> str:
+    """Mesma lógica do hash_refresh_token: a chave já nasce aleatória e de
+    alta entropia, então SHA-256 simples é suficiente -- não precisamos do
+    custo computacional de um KDF de senha aqui."""
+    return hashlib.sha256(raw_key.encode()).hexdigest()
