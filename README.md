@@ -1,6 +1,6 @@
 # SaaS Starter Kit — Multi-Tenant Auth & Permissions
 
-![CI](https://github.com/SEU_USUARIO/SEU_REPO/actions/workflows/ci.yml/badge.svg)
+![CI](https://github.com/JonatasDoroteu/-SaaS-Starter-Kit-Multi-Tenant-Auth-Permissions/actions/workflows/ci.yml/badge.svg)
 
 Um starter para aplicações SaaS multi-tenant, com foco em autenticação, isolamento de dados entre organizações, controle de acesso baseado em papéis (RBAC), cotas de uso por plano e emissão segura de chaves de API.
 
