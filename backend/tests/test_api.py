@@ -14,11 +14,6 @@ from app.models.user import User
 from app.services.state import reset_store
 
 
-@pytest.fixture(autouse=True)
-def clear_state() -> None:
-    reset_store()
-
-
 client = TestClient(app)
 
 
