@@ -1,8 +1,10 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_authenticated_email
+from app.db import get_db
 from app.schemas.api_key import ApiKeyCreatedResponse, ApiKeyCreateRequest, ApiKeyResponse
 from app.services.state import store
 
@@ -14,11 +16,12 @@ async def create_api_key(
     payload: ApiKeyCreateRequest,
     x_organization_id: int | None = Header(default=None, alias="X-Organization-Id"),
     authorization: str | None = Header(default=None, alias="Authorization"),
+    session: AsyncSession = Depends(get_db),
 ) -> ApiKeyCreatedResponse:
     if x_organization_id is None:
         raise HTTPException(status_code=400, detail="X-Organization-Id header is required")
 
-    owner_email = get_authenticated_email(authorization)
+    owner_email = await get_authenticated_email(authorization, session)
     if not await store.can_manage_organization(owner_email, x_organization_id):
         raise HTTPException(status_code=403, detail="Only organization owners can create API keys")
 
@@ -30,11 +33,12 @@ async def create_api_key(
 async def list_api_keys(
     x_organization_id: int | None = Header(default=None, alias="X-Organization-Id"),
     authorization: str | None = Header(default=None, alias="Authorization"),
+    session: AsyncSession = Depends(get_db),
 ) -> list[ApiKeyResponse]:
     if x_organization_id is None:
         raise HTTPException(status_code=400, detail="X-Organization-Id header is required")
 
-    owner_email = get_authenticated_email(authorization)
+    owner_email = await get_authenticated_email(authorization, session)
     membership = await store.get_membership(owner_email, x_organization_id)
     if membership is None:
         raise HTTPException(status_code=403, detail="You are not a member of this organization")
@@ -48,11 +52,12 @@ async def revoke_api_key(
     key_id: int,
     x_organization_id: int | None = Header(default=None, alias="X-Organization-Id"),
     authorization: str | None = Header(default=None, alias="Authorization"),
+    session: AsyncSession = Depends(get_db),
 ) -> None:
     if x_organization_id is None:
         raise HTTPException(status_code=400, detail="X-Organization-Id header is required")
 
-    owner_email = get_authenticated_email(authorization)
+    owner_email = await get_authenticated_email(authorization, session)
     if not await store.can_manage_organization(owner_email, x_organization_id):
         raise HTTPException(status_code=403, detail="Only organization owners can revoke API keys")
 

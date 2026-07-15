@@ -1,6 +1,8 @@
-from fastapi import APIRouter, Header, HTTPException, status
+from fastapi import APIRouter, Depends, Header, HTTPException, status
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.api.deps import get_authenticated_email
+from app.db import get_db
 from app.schemas.organization import InviteRequest, InviteResponse, OrganizationCreateRequest, OrganizationResponse
 from app.services.state import store
 
@@ -11,8 +13,9 @@ router = APIRouter()
 async def list_organizations(
     x_organization_id: int | None = Header(default=None, alias="X-Organization-Id"),
     authorization: str | None = Header(default=None, alias="Authorization"),
+    session: AsyncSession = Depends(get_db),
 ) -> list[OrganizationResponse]:
-    owner_email = get_authenticated_email(authorization)
+    owner_email = await get_authenticated_email(authorization, session)
 
     if x_organization_id is None:
         organizations = await store.list_organizations_for_user(owner_email)
@@ -32,8 +35,9 @@ async def list_organizations(
 async def create_organization(
     payload: OrganizationCreateRequest,
     authorization: str | None = Header(default=None, alias="Authorization"),
+    session: AsyncSession = Depends(get_db),
 ) -> OrganizationResponse:
-    owner_email = get_authenticated_email(authorization)
+    owner_email = await get_authenticated_email(authorization, session)
     organization = await store.create_organization(payload.name, owner_email)
     return OrganizationResponse(id=organization["id"], name=organization["name"])
 
@@ -43,11 +47,12 @@ async def create_invite(
     payload: InviteRequest,
     x_organization_id: int | None = Header(default=None, alias="X-Organization-Id"),
     authorization: str | None = Header(default=None, alias="Authorization"),
+    session: AsyncSession = Depends(get_db),
 ) -> InviteResponse:
     if x_organization_id is None:
         raise HTTPException(status_code=400, detail="X-Organization-Id header is required")
 
-    owner_email = get_authenticated_email(authorization)
+    owner_email = await get_authenticated_email(authorization, session)
     if not await store.can_manage_organization(owner_email, x_organization_id):
         raise HTTPException(status_code=403, detail="Only organization owners can create invites")
 
