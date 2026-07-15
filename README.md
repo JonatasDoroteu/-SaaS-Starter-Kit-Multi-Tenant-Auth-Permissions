@@ -1,12 +1,18 @@
 # SaaS Starter Kit — Multi-Tenant Auth & Permissions
 
+![CI](https://github.com/SEU_USUARIO/SEU_REPO/actions/workflows/ci.yml/badge.svg)
+
 Um starter para aplicações SaaS multi-tenant, com foco em autenticação, isolamento de dados entre organizações, controle de acesso baseado em papéis (RBAC), cotas de uso por plano e emissão segura de chaves de API.
 
 O objetivo é construir uma base sólida usando conceitos presentes em aplicações SaaS modernas — arquitetura organizada, segura e preparada para evoluir.
 
 > 🚧 Projeto em desenvolvimento ativo. Feedbacks e sugestões são sempre bem-vindos!
 
-📸 Preview
+📸 Preview 
+
+## Login
+
+![login](screenshots/login.png)
 
 ## Dashboard
 
@@ -48,6 +54,7 @@ O objetivo é construir uma base sólida usando conceitos presentes em aplicaç�
   - aceite de convites
   - emissão e revogação de API Keys
 - Schema do banco gerenciado inteiramente pelo **Alembic** — o servidor não recria mais as tabelas automaticamente no boot (uma decisão de segurança: evita perda acidental de dados a cada restart)
+- **Integração contínua (CI)** — workflow do GitHub Actions que roda a suíte de testes automaticamente a cada `push` e `pull request` na branch `main`, aplicando as migrations via Alembic antes dos testes
 
 ---
 
@@ -67,6 +74,8 @@ Os testes validam os principais fluxos implementados, incluindo:
 - criação e aceitação de convites
 - bloqueio de uso ao atingir a cota mensal
 
+A cada `push` ou `pull request` para `main`, esses mesmos testes rodam automaticamente via GitHub Actions — o badge no topo deste README reflete o status em tempo real.
+
 ---
 
 ## 🛠️ Stack utilizada
@@ -85,12 +94,18 @@ Os testes validam os principais fluxos implementados, incluindo:
 - Vite
 - Sistema de design próprio (CSS puro, sem framework de UI): paleta neutra fria com um único accent de sinalização, tipografia Space Grotesk + IBM Plex Mono
 
+**DevOps**
+- GitHub Actions (CI — testes automatizados a cada push/PR)
+
 ---
 
 ## 📂 Estrutura do projeto
 
 ```
 .
+├── .github/
+│   └── workflows/
+│       └── ci.yml               # pipeline de CI (testes automatizados)
 ├── backend/
 │   ├── app/
 │   │   ├── api/
@@ -164,13 +179,25 @@ cd backend
 pytest -q
 ```
 
+### CI/CD
+
+O projeto conta com um workflow de integração contínua (`.github/workflows/ci.yml`) que, a cada `push` ou `pull request` na branch `main`:
+
+1. Faz checkout do código
+2. Configura o Python 3.11 com cache de dependências
+3. Instala as dependências do `backend/requirements.txt`
+4. Aplica as migrations com `alembic upgrade head`
+5. Roda a suíte de testes com `pytest -q`
+
+Como todas as configurações em `Settings` têm valores default (incluindo `database_url` apontando para SQLite), o workflow roda de ponta a ponta sem precisar de secrets ou variáveis de ambiente adicionais.
+
 ---
 
 ## 🔹 Próximos passos
 
 - [ ] Migração para PostgreSQL em produção
 - [ ] Docker e Docker Compose completos
-- [ ] Pipeline de CI/CD com GitHub Actions
+- [x] Pipeline de CI/CD com GitHub Actions
 - [ ] Expansão da cobertura de testes (incluindo o fluxo completo de API Keys)
 - [ ] Rate limiting por API Key
 - [ ] Escopos/permissões granulares por chave (hoje uma chave tem acesso total à organização)

@@ -80,11 +80,27 @@ function App() {
     }
   };
 
+  const handleLogout = () => {
+    localStorage.removeItem('token');
+    setToken('');
+    setOrgs([]);
+    setSelectedOrgId(null);
+    setMessage('Logged out');
+  };
+
   return (
     <div className="app-shell">
       <span className="app-eyebrow">Multi-tenant infrastructure</span>
       <h1>SaaS Starter</h1>
-      <p>Multi-tenant auth, organizations and invites in one place.</p>
+
+      <div className="app-header-row">
+        <p>Multi-tenant auth, organizations and invites in one place.</p>
+        {token ? (
+          <button type="button" className="secondary" onClick={handleLogout}>
+            Logout
+          </button>
+        ) : null}
+      </div>
 
       {!token ? (
         <form onSubmit={handleAuth} className="card">
