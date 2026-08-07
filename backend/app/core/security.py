@@ -74,7 +74,7 @@ def hash_refresh_token(raw_token: str) -> str:
 
 def refresh_token_expires_at() -> datetime:
     settings = get_settings()
-    return datetime.now(timezone.utc) + timedelta(days=settings.refresh_token_ttl_days)
+    return datetime.now(timezone.utc).replace(tzinfo=None) + timedelta(days=settings.refresh_token_ttl_days)
 # --- API Keys (mesmo raciocínio do refresh token: opaca, hash salvo) -----
 
 def generate_api_key() -> str:
