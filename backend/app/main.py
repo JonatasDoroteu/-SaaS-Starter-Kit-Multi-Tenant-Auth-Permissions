@@ -2,6 +2,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from app.api.routes import health, auth, invites, organizations, usage, api_keys
+from app.core.config import get_settings
 from app.services.state import seed_demo_user
 
 app = FastAPI(title="SaaS Starter", version="0.1.0")
@@ -24,4 +25,6 @@ app.include_router(api_keys.router, prefix="/api/v1/api-keys", tags=["api-keys"]
 
 @app.on_event("startup")
 async def startup_event() -> None:
-    await seed_demo_user()
+    settings = get_settings()
+    if settings.debug:
+        await seed_demo_user()
