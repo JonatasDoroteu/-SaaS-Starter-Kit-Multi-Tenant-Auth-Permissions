@@ -8,7 +8,7 @@ class OrganizationCreateRequest(BaseModel):
 class OrganizationResponse(BaseModel):
     id: int
     name: str
-
+    role: str | None = None
 
 class InviteRequest(BaseModel):
     email: str
