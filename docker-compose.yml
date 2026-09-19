@@ -1,10 +1,54 @@
-version: "3.9"
 services:
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  notification-service:
+    build:
+      context: "C:/Users/Jonatas/Downloads/notificacoes-tempo-real/project"
+    ports:
+      - "3000:3000"
+    environment:
+      NODE_ENV: production
+      HTTP_PORT: "3000"
+      JWT_SECRET: fajmmdjfS2QUwAWgRxhv2s5-Ew5uF_U8Ylsme6G8eidRsmxZLHlg7zo-sniMfXGOIY7onYEFGVA0CIUmhFQBnw
+      STARTER_KIT_URL: http://backend:8000
+      NOTIFICATION_SERVICE_KEY: dev-service-key-change-me
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  notification-worker:
+    build:
+      context: "C:/Users/Jonatas/Downloads/notificacoes-tempo-real/project"
+    command: ["node", "dist/queue/worker.js"]
+    environment:
+      NODE_ENV: production
+      JWT_SECRET: fajmmdjfS2QUwAWgRxhv2s5-Ew5uF_U8Ylsme6G8eidRsmxZLHlg7zo-sniMfXGOIY7onYEFGVA0CIUmhFQBnw
+      STARTER_KIT_URL: http://backend:8000
+      NOTIFICATION_SERVICE_KEY: dev-service-key-change-me
+      REDIS_URL: redis://redis:6379
+    depends_on:
+      redis:
+        condition: service_healthy
+
   backend:
     build:
       context: ./backend
     ports:
       - "8000:8000"
     environment:
+      SECRET_KEY: fajmmdjfS2QUwAWgRxhv2s5-Ew5uF_U8Ylsme6G8eidRsmxZLHlg7zo-sniMfXGOIY7onYEFGVA0CIUmhFQBnw
+      ALGORITHM: HS256
       DATABASE_URL: sqlite+aiosqlite:///./saas_starter.db
-    command: uvicorn app.main:app --host 0.0.0.0 --port 8000
+      NOTIFICATION_SERVICE_URL: http://notification-service:3000
+      NOTIFICATION_SERVICE_KEY: dev-service-key-change-me
+    depends_on:
+      - notification-service
