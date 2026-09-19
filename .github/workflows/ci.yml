@@ -33,8 +33,11 @@ jobs:
 
       - name: Run database migrations
         run: alembic upgrade head
+        env:
+          SECRET_KEY: test-secret-key-for-ci-only
 
       - name: Run tests
         run: pytest -q
         env:
           PYTHONPATH: .
+          SECRET_KEY: test-secret-key-for-ci-only
