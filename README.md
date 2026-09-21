@@ -76,7 +76,7 @@ A suíte de testes do backend foi executada com sucesso:
 pytest -q
 ```
 
-**Resultado:** ✅ 12 testes passaram
+**Resultado:** ✅ 13 testes passaram
 
 Os testes validam os principais fluxos implementados, incluindo:
 - isolamento de dados entre organizações
