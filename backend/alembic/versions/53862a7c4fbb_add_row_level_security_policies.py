@@ -48,6 +48,9 @@ def _policy_expressions(table: str) -> tuple[str, str]:
 
 
 def upgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return
+
     for table in TENANT_TABLES:
         using_expression, check_expression = _policy_expressions(table)
         policy_name = f"{table}_tenant_isolation"
@@ -62,6 +65,9 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
+    if op.get_bind().dialect.name != "postgresql":
+        return
+
     for table in reversed(TENANT_TABLES):
         policy_name = f"{table}_tenant_isolation"
         op.execute(sa.text(f"DROP POLICY IF EXISTS {policy_name} ON {table}"))
