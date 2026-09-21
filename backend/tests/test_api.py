@@ -13,6 +13,8 @@ from app.models.invite import Invite
 from app.models.membership import Membership
 from app.models.user import User
 from app.services.state import reset_store
+from app.services.rate_limit import api_key_rate_limiter
+from app.core.config import get_settings
 
 
 client = TestClient(app)
@@ -463,3 +465,42 @@ def test_api_key_isolation_blocks_other_organization() -> None:
 
     assert client.delete(f"/api/v1/api-keys/{key['id']}", headers=org2_headers).status_code == 404
     assert client.get("/api/v1/api-keys", headers=org2_headers).json() == []
+
+
+def test_api_key_rate_limit_rejects_invalid_and_excessive_requests() -> None:
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": "owner@example.com", "password": "secret123"},
+    )
+    token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@example.com", "password": "secret123"},
+    ).json()["access_token"]
+    org_id = client.post(
+        "/api/v1/organizations",
+        json={"name": "RateLimitOrg"},
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()["id"]
+    api_key = client.post(
+        "/api/v1/api-keys",
+        json={"name": "Rate limit key"},
+        headers={"Authorization": f"Bearer {token}", "X-Organization-Id": str(org_id)},
+    ).json()["api_key"]
+
+    assert client.get("/health", headers={"X-API-Key": "sk_live_invalid"}).status_code == 401
+
+    settings = get_settings()
+    original_limit = settings.api_key_rate_limit
+    settings.api_key_rate_limit = 1
+    api_key_rate_limiter._memory.clear()
+    try:
+        headers = {"X-API-Key": api_key}
+        first = client.get("/health", headers=headers)
+        second = client.get("/health", headers=headers)
+        assert first.status_code == 200
+        assert first.headers["X-RateLimit-Limit"] == "1"
+        assert second.status_code == 429
+        assert second.headers["Retry-After"]
+    finally:
+        settings.api_key_rate_limit = original_limit
+        api_key_rate_limiter._memory.clear()
