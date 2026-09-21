@@ -1,4 +1,20 @@
 services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: saas_starter
+      POSTGRES_USER: saas
+      POSTGRES_PASSWORD: saas-dev-password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U saas -d saas_starter"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
   redis:
     image: redis:7-alpine
     ports:
@@ -7,37 +23,7 @@ services:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
-      retries: 5
-
-  notification-service:
-    build:
-      context: "C:/Users/Jonatas/Downloads/notificacoes-tempo-real/project"
-    ports:
-      - "3000:3000"
-    environment:
-      NODE_ENV: production
-      HTTP_PORT: "3000"
-      JWT_SECRET: fajmmdjfS2QUwAWgRxhv2s5-Ew5uF_U8Ylsme6G8eidRsmxZLHlg7zo-sniMfXGOIY7onYEFGVA0CIUmhFQBnw
-      STARTER_KIT_URL: http://backend:8000
-      NOTIFICATION_SERVICE_KEY: dev-service-key-change-me
-      REDIS_URL: redis://redis:6379
-    depends_on:
-      redis:
-        condition: service_healthy
-
-  notification-worker:
-    build:
-      context: "C:/Users/Jonatas/Downloads/notificacoes-tempo-real/project"
-    command: ["node", "dist/queue/worker.js"]
-    environment:
-      NODE_ENV: production
-      JWT_SECRET: fajmmdjfS2QUwAWgRxhv2s5-Ew5uF_U8Ylsme6G8eidRsmxZLHlg7zo-sniMfXGOIY7onYEFGVA0CIUmhFQBnw
-      STARTER_KIT_URL: http://backend:8000
-      NOTIFICATION_SERVICE_KEY: dev-service-key-change-me
-      REDIS_URL: redis://redis:6379
-    depends_on:
-      redis:
-        condition: service_healthy
+      retries: 10
 
   backend:
     build:
@@ -45,10 +31,19 @@ services:
     ports:
       - "8000:8000"
     environment:
-      SECRET_KEY: fajmmdjfS2QUwAWgRxhv2s5-Ew5uF_U8Ylsme6G8eidRsmxZLHlg7zo-sniMfXGOIY7onYEFGVA0CIUmhFQBnw
+      SECRET_KEY: local-only-change-me
       ALGORITHM: HS256
-      DATABASE_URL: sqlite+aiosqlite:///./saas_starter.db
-      NOTIFICATION_SERVICE_URL: http://notification-service:3000
-      NOTIFICATION_SERVICE_KEY: dev-service-key-change-me
+      DATABASE_URL: postgresql+asyncpg://saas:saas-dev-password@postgres:5432/saas_starter
+      REDIS_URL: redis://redis:6379/0
+      FRONTEND_URL: http://localhost:3000
+      NOTIFICATION_SERVICE_URL: http://localhost:3000
+      NOTIFICATION_SERVICE_KEY: local-only-change-me
+    command: ["sh", "-c", "alembic upgrade head && uvicorn app.main:app --host 0.0.0.0 --port 8000"]
     depends_on:
-      - notification-service
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+volumes:
+  postgres_data:

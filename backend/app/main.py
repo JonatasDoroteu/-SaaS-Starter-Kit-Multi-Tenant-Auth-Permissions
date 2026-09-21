@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes import health, auth, invites, organizations, usage, api_keys
 from app.core.config import get_settings
 from app.services.state import seed_demo_user
+from app.middleware import ApiKeyRateLimitMiddleware
 
 app = FastAPI(title="SaaS Starter", version="0.1.0")
 settings = get_settings()
@@ -15,6 +16,7 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(ApiKeyRateLimitMiddleware)
 
 app.include_router(health.router, prefix="/health", tags=["health"])
 app.include_router(auth.router, prefix="/api/v1/auth", tags=["auth"])

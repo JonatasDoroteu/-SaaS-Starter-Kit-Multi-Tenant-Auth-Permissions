@@ -15,6 +15,9 @@ class Settings(BaseSettings):
     notification_service_url: str = "http://localhost:3000"
     notification_service_key: str = "dev-service-key-change-me"
     frontend_url: str = "http://localhost:3000"
+    redis_url: str = "redis://localhost:6379/0"
+    api_key_rate_limit: int = 100
+    api_key_rate_window_seconds: int = 60
 
     model_config = SettingsConfigDict(
         env_file=".env",

@@ -44,6 +44,9 @@ def _policy_expressions(table: str) -> tuple[str, str]:
     if table == "invites":
         invite_context = "token = current_setting('app.invite_token', true)"
         return f"({tenant_context}) OR ({invite_context})", tenant_context
+    if table == "api_keys":
+        key_context = "hashed_key = current_setting('app.api_key_hash', true)"
+        return f"({tenant_context}) OR ({key_context})", tenant_context
     return tenant_context, tenant_context
 
 
