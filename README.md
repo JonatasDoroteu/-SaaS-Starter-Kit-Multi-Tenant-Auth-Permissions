@@ -86,6 +86,10 @@ Os testes validam os principais fluxos implementados, incluindo:
 
 A cada `push` ou `pull request` para `main`, esses mesmos testes rodam automaticamente via GitHub Actions — o badge no topo deste README reflete o status em tempo real.
 
+O teste manual de RLS usando `SET ROLE saas_app` ainda precisa ser executado no Supabase. A suíte local usa SQLite e, portanto, não valida as policies PostgreSQL nem a role de aplicação.
+
+Para validar em um ambiente seguro, conecte-se ao Supabase com uma role administrativa, execute `SET ROLE saas_app` e confirme que duas transações com valores diferentes de `app.current_org_id` nunca conseguem consultar ou alterar dados do tenant oposto. Depois, verifique novamente `rolsuper = false` e `rolbypassrls = false` para `saas_app`.
+
 ---
 
 ## Stack utilizada
@@ -227,7 +231,7 @@ O workflow define `SECRET_KEY` como variável de ambiente exclusiva para o CI, j
 - [x] Migração para PostgreSQL em produção
 - [x] Deploy da API em produção (Render + Supabase)
 - [x] Pipeline de CI/CD com GitHub Actions
-- [x] Row Level Security (RLS) nas tabelas do Supabase com role de aplicação sem `BYPASSRLS`
+- [ ] Validar RLS no Supabase com `SET ROLE saas_app` e teste manual de isolamento cross-tenant
 - [x] Expansão da cobertura de testes (incluindo o fluxo completo de API Keys)
 - [x] Configuração do deploy do frontend em produção
 - [ ] Docker e Docker Compose completos
