@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import time
 
-from redis.asyncio import Redis
+try:
+    from redis.asyncio import Redis
+except ImportError:  # Redis is optional for local/test execution.
+    Redis = None  # type: ignore[assignment,misc]
 
 from app.core.config import get_settings
 
@@ -10,7 +13,7 @@ from app.core.config import get_settings
 class ApiKeyRateLimiter:
     def __init__(self) -> None:
         self.settings = get_settings()
-        self._redis: Redis | None = None
+        self._redis = None
         self._memory: dict[str, tuple[int, float]] = {}
 
     async def allow(self, key_hash: str) -> tuple[bool, int]:
@@ -36,6 +39,8 @@ class ApiKeyRateLimiter:
         return count <= limit, max(0, limit - count)
 
     async def _get_redis(self) -> Redis | None:
+        if Redis is None:
+            return None
         if self._redis is None:
             self._redis = Redis.from_url(self.settings.redis_url, decode_responses=True)
         try:
