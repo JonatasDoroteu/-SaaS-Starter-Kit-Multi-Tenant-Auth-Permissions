@@ -6,10 +6,11 @@ from app.core.config import get_settings
 from app.services.state import seed_demo_user
 
 app = FastAPI(title="SaaS Starter", version="0.1.0")
+settings = get_settings()
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000", "http://127.0.0.1:3000"],
+    allow_origins=[settings.frontend_url, "http://localhost:3000", "http://127.0.0.1:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

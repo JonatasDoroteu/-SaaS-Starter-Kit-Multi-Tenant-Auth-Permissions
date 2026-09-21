@@ -4,7 +4,7 @@ import asyncio
 from datetime import datetime, timezone
 from typing import Any
 from app.models.api_key import ApiKey
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.db import AsyncSessionLocal, engine
 from app.models.audit_event import AuditEvent
@@ -60,6 +60,31 @@ class SqlAlchemyStore:
         await initialize_database()
         self._initialized = True
 
+    async def _set_request_context(
+        self,
+        session: AsyncSession,
+        *,
+        organization_id: int | None = None,
+        user_id: Any | None = None,
+        invite_token: str | None = None,
+        allow_organization_creation: bool = False,
+    ) -> None:
+        if session.bind.dialect.name == "postgresql":
+            context = {}
+            if organization_id is not None:
+                context["app.current_org_id"] = str(organization_id)
+            if user_id is not None:
+                context["app.current_user_id"] = str(user_id)
+            if invite_token is not None:
+                context["app.invite_token"] = invite_token
+            if allow_organization_creation:
+                context["app.allow_org_creation"] = "true"
+            for setting_name, setting_value in context.items():
+                await session.execute(
+                    text("SELECT set_config(:setting_name, :setting_value, true)"),
+                    {"setting_name": setting_name, "setting_value": setting_value},
+                )
+
     async def add_user(self, email: str, password_hash: str, full_name: str | None = None) -> dict[str, Any]:
         await self._ensure_initialized()
         async with self.session_factory() as session:
@@ -97,6 +122,7 @@ class SqlAlchemyStore:
     async def get_organization(self, organization_id: int) -> dict[str, Any] | None:
         await self._ensure_initialized()
         async with self.session_factory() as session:
+            await self._set_request_context(session, organization_id=organization_id)
             organization = await session.get(Organization, organization_id)
             if organization is None:
                 return None
@@ -117,7 +143,12 @@ class SqlAlchemyStore:
 
             organization = Organization(name=name)
             session.add(organization)
+            await self._set_request_context(
+                session,
+                allow_organization_creation=True,
+            )
             await session.flush()
+            await self._set_request_context(session, organization_id=organization.id)
             membership = Membership(user_id=user.id, organization_id=organization.id, role="owner")
             session.add(membership)
             audit_event = AuditEvent(
@@ -137,9 +168,11 @@ class SqlAlchemyStore:
             user = await session.scalar(select(User).where(User.email == email))
             if user is None:
                 return []
+            await self._set_request_context(session, user_id=user.id)
             memberships = (await session.scalars(select(Membership).where(Membership.user_id == user.id))).all()
             organizations = []
             for membership in memberships:
+                await self._set_request_context(session, organization_id=membership.organization_id)
                 organization = await session.get(Organization, membership.organization_id)
                 if organization is not None:
                     organizations.append({"id": organization.id, "name": organization.name})
@@ -151,6 +184,11 @@ class SqlAlchemyStore:
             user = await session.scalar(select(User).where(User.email == email))
             if user is None:
                 return None
+            await self._set_request_context(
+                session,
+                organization_id=organization_id,
+                user_id=user.id,
+            )
             membership = await session.scalar(
                 select(Membership).where(
                     Membership.user_id == user.id,
@@ -170,6 +208,7 @@ class SqlAlchemyStore:
     ) -> dict[str, Any]:
         await self._ensure_initialized()
         async with self.session_factory() as session:
+            await self._set_request_context(session, organization_id=organization_id)
             organization = await session.get(Organization, organization_id)
             if organization is None:
                 raise ValueError("Organization not found")
@@ -203,6 +242,7 @@ class SqlAlchemyStore:
     async def get_usage(self, organization_id: int) -> dict[str, Any]:
         await self._ensure_initialized()
         async with self.session_factory() as session:
+            await self._set_request_context(session, organization_id=organization_id)
             organization = await session.get(Organization, organization_id)
             if organization is None:
                 raise ValueError("Organization not found")
@@ -228,6 +268,7 @@ class SqlAlchemyStore:
     async def create_invite(self, *, organization_id: int, email: str, role: str) -> dict[str, Any]:
         await self._ensure_initialized()
         async with self.session_factory() as session:
+            await self._set_request_context(session, organization_id=organization_id)
             token = f"inv-{int(datetime.now(timezone.utc).timestamp())}"
             invite = Invite(token=token, organization_id=organization_id, email=email, role=role)
             session.add(invite)
@@ -250,6 +291,7 @@ class SqlAlchemyStore:
     async def create_api_key(self, organization_id: int, name: str) -> dict[str, Any]:
         await self._ensure_initialized()
         async with self.session_factory() as session:
+            await self._set_request_context(session, organization_id=organization_id)
             organization = await session.get(Organization, organization_id)
             if organization is None:
                 raise ValueError("Organization not found")
@@ -282,6 +324,7 @@ class SqlAlchemyStore:
     async def list_api_keys(self, organization_id: int) -> list[dict[str, Any]]:
         await self._ensure_initialized()
         async with self.session_factory() as session:
+            await self._set_request_context(session, organization_id=organization_id)
             keys = (
                 await session.scalars(
                     select(ApiKey).where(ApiKey.organization_id == organization_id)
@@ -302,18 +345,28 @@ class SqlAlchemyStore:
     async def revoke_api_key(self, organization_id: int, key_id: int) -> bool:
         await self._ensure_initialized()
         async with self.session_factory() as session:
+            await self._set_request_context(session, organization_id=organization_id)
             api_key = await session.get(ApiKey, key_id)
             if api_key is None or api_key.organization_id != organization_id:
                 return False
             if api_key.revoked_at is not None:
                 return True  # já revogada, idempotente
             api_key.revoked_at = datetime.now(timezone.utc)
+            session.add(
+                AuditEvent(
+                    organization_id=organization_id,
+                    actor_id=None,
+                    action="api_key.revoked",
+                    details=f"Revoked API key '{api_key.name}'",
+                )
+            )
             await session.commit()
             return True
         
     async def accept_invite(self, token: str, email: str) -> dict[str, Any] | None:
         await self._ensure_initialized()
         async with self.session_factory() as session:
+            await self._set_request_context(session, invite_token=token)
             invite = await session.scalar(select(Invite).where(Invite.token == token))
             if invite is None:
                 return None
@@ -329,6 +382,12 @@ class SqlAlchemyStore:
             user = await session.scalar(select(User).where(User.email == email))
             if user is None:
                 return None
+            await self._set_request_context(
+                session,
+                organization_id=invite.organization_id,
+                user_id=user.id,
+                invite_token=token,
+            )
 
             existing_membership = await session.scalar(
                 select(Membership).where(

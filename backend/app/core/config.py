@@ -14,6 +14,7 @@ class Settings(BaseSettings):
     database_url: str = "sqlite+aiosqlite:///./saas_starter.db"
     notification_service_url: str = "http://localhost:3000"
     notification_service_key: str = "dev-service-key-change-me"
+    frontend_url: str = "http://localhost:3000"
 
     model_config = SettingsConfigDict(
         env_file=".env",

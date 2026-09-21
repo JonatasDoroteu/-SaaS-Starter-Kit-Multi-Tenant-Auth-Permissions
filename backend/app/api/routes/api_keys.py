@@ -21,7 +21,7 @@ async def create_api_key(
     if x_organization_id is None:
         raise HTTPException(status_code=400, detail="X-Organization-Id header is required")
 
-    owner_email = await get_authenticated_email(authorization, session)
+    owner_email = await get_authenticated_email(authorization, session, x_organization_id)
     if not await store.can_manage_organization(owner_email, x_organization_id):
         raise HTTPException(status_code=403, detail="Only organization owners can create API keys")
 
@@ -38,7 +38,7 @@ async def list_api_keys(
     if x_organization_id is None:
         raise HTTPException(status_code=400, detail="X-Organization-Id header is required")
 
-    owner_email = await get_authenticated_email(authorization, session)
+    owner_email = await get_authenticated_email(authorization, session, x_organization_id)
     membership = await store.get_membership(owner_email, x_organization_id)
     if membership is None:
         raise HTTPException(status_code=403, detail="You are not a member of this organization")
@@ -57,7 +57,7 @@ async def revoke_api_key(
     if x_organization_id is None:
         raise HTTPException(status_code=400, detail="X-Organization-Id header is required")
 
-    owner_email = await get_authenticated_email(authorization, session)
+    owner_email = await get_authenticated_email(authorization, session, x_organization_id)
     if not await store.can_manage_organization(owner_email, x_organization_id):
         raise HTTPException(status_code=403, detail="Only organization owners can revoke API keys")
 

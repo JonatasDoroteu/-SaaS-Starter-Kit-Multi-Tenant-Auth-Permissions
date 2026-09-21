@@ -8,6 +8,7 @@ from sqlalchemy import select
 from app.db import AsyncSessionLocal
 from app.main import app
 from app.models.audit_event import AuditEvent
+from app.models.api_key import ApiKey
 from app.models.invite import Invite
 from app.models.membership import Membership
 from app.models.user import User
@@ -340,3 +341,125 @@ def test_invite_accept_flow() -> None:
     )
     assert accept_response.status_code == 200
     assert accept_response.json()["status"] == "accepted"
+
+
+def test_api_key_full_lifecycle_hides_secret_and_audits_revoke() -> None:
+    client.post(
+        "/api/v1/auth/register",
+        json={"email": "owner@example.com", "password": "secret123"},
+    )
+    token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@example.com", "password": "secret123"},
+    ).json()["access_token"]
+    org_id = client.post(
+        "/api/v1/organizations",
+        json={"name": "KeysOrg"},
+        headers={"Authorization": f"Bearer {token}"},
+    ).json()["id"]
+    headers = {"Authorization": f"Bearer {token}", "X-Organization-Id": str(org_id)}
+
+    create_response = client.post("/api/v1/api-keys", json={"name": "CI key"}, headers=headers)
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["api_key"].startswith("sk_live_")
+    assert created["prefix"] == created["api_key"][:16]
+
+    list_response = client.get("/api/v1/api-keys", headers=headers)
+    assert list_response.status_code == 200
+    listed = list_response.json()
+    assert listed[0]["id"] == created["id"]
+    assert "api_key" not in listed[0]
+    assert listed[0]["revoked_at"] is None
+
+    async def fetch_key() -> ApiKey | None:
+        async with AsyncSessionLocal() as session:
+            return await session.get(ApiKey, created["id"])
+
+    persisted_key = asyncio.run(fetch_key())
+    assert persisted_key is not None
+    assert persisted_key.hashed_key != created["api_key"]
+
+    revoke_response = client.delete(f"/api/v1/api-keys/{created['id']}", headers=headers)
+    assert revoke_response.status_code == 204
+    assert client.delete(f"/api/v1/api-keys/{created['id']}", headers=headers).status_code == 204
+
+    revoked = client.get("/api/v1/api-keys", headers=headers).json()[0]
+    assert revoked["revoked_at"] is not None
+
+    async def fetch_audit_events() -> list[AuditEvent]:
+        async with AsyncSessionLocal() as session:
+            events = await session.scalars(
+                select(AuditEvent).where(
+                    AuditEvent.organization_id == org_id,
+                    AuditEvent.action == "api_key.revoked",
+                )
+            )
+            return list(events.all())
+
+    assert len(asyncio.run(fetch_audit_events())) == 1
+
+
+def test_api_key_requires_owner_for_create_and_revoke() -> None:
+    for email in ("owner@example.com", "member@example.com"):
+        client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "password": "secret123"},
+        )
+    owner_token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner@example.com", "password": "secret123"},
+    ).json()["access_token"]
+    member_token = client.post(
+        "/api/v1/auth/login",
+        json={"email": "member@example.com", "password": "secret123"},
+    ).json()["access_token"]
+    org_id = client.post(
+        "/api/v1/organizations",
+        json={"name": "PermissionsOrg"},
+        headers={"Authorization": f"Bearer {owner_token}"},
+    ).json()["id"]
+    owner_headers = {"Authorization": f"Bearer {owner_token}", "X-Organization-Id": str(org_id)}
+    member_headers = {"Authorization": f"Bearer {member_token}", "X-Organization-Id": str(org_id)}
+
+    create_response = client.post("/api/v1/api-keys", json={"name": "Owner key"}, headers=owner_headers)
+    assert create_response.status_code == 201
+    key_id = create_response.json()["id"]
+
+    assert client.post("/api/v1/api-keys", json={"name": "Member key"}, headers=member_headers).status_code == 403
+    assert client.delete(f"/api/v1/api-keys/{key_id}", headers=member_headers).status_code == 403
+
+
+def test_api_key_isolation_blocks_other_organization() -> None:
+    for email in ("owner1@example.com", "owner2@example.com"):
+        client.post(
+            "/api/v1/auth/register",
+            json={"email": email, "password": "secret123"},
+        )
+    token1 = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner1@example.com", "password": "secret123"},
+    ).json()["access_token"]
+    token2 = client.post(
+        "/api/v1/auth/login",
+        json={"email": "owner2@example.com", "password": "secret123"},
+    ).json()["access_token"]
+    org1 = client.post(
+        "/api/v1/organizations",
+        json={"name": "OrgOne"},
+        headers={"Authorization": f"Bearer {token1}"},
+    ).json()["id"]
+    org2 = client.post(
+        "/api/v1/organizations",
+        json={"name": "OrgTwo"},
+        headers={"Authorization": f"Bearer {token2}"},
+    ).json()["id"]
+    key = client.post(
+        "/api/v1/api-keys",
+        json={"name": "Private key"},
+        headers={"Authorization": f"Bearer {token1}", "X-Organization-Id": str(org1)},
+    ).json()
+    org2_headers = {"Authorization": f"Bearer {token2}", "X-Organization-Id": str(org2)}
+
+    assert client.delete(f"/api/v1/api-keys/{key['id']}", headers=org2_headers).status_code == 404
+    assert client.get("/api/v1/api-keys", headers=org2_headers).json() == []
