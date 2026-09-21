@@ -63,6 +63,7 @@ O objetivo é construir uma base sólida usando conceitos presentes em aplicaç�
 - Schema do banco gerenciado inteiramente pelo **Alembic** — o servidor não recria mais as tabelas automaticamente no boot (uma decisão de segurança: evita perda acidental de dados a cada restart)
 - **Integração contínua (CI)** — workflow do GitHub Actions que roda a suíte de testes automaticamente a cada `push` e `pull request` na branch `main`, aplicando as migrations via Alembic antes dos testes
 - **Deploy em produção** — API no Render, PostgreSQL gerenciado pelo Supabase, com pool de conexões configurado para ambiente serverless (`NullPool`)
+- **Role de aplicação dedicada** — o backend deve conectar usando `saas_app`, uma role sem `SUPERUSER` e sem `BYPASSRLS`; migrations continuam sendo executadas com a role administrativa
 
 ---
 
@@ -74,13 +75,14 @@ A suíte de testes do backend foi executada com sucesso:
 pytest -q
 ```
 
-**Resultado:** ✅ 9 testes passaram
+**Resultado:** ✅ 12 testes passaram
 
 Os testes validam os principais fluxos implementados, incluindo:
 - isolamento de dados entre organizações
 - regras de autorização por role
 - criação e aceitação de convites
 - bloqueio de uso ao atingir a cota mensal
+- ciclo completo de API Keys, incluindo segredo de uso único, hash, revogação e isolamento entre organizações
 
 A cada `push` ou `pull request` para `main`, esses mesmos testes rodam automaticamente via GitHub Actions — o badge no topo deste README reflete o status em tempo real.
 
@@ -182,6 +184,23 @@ O frontend sobe em `http://localhost:3000`.
 
 > ⚠️ Backend e frontend precisam estar rodando **ao mesmo tempo**, em terminais separados. O CORS já está configurado para aceitar requisições vindas de `http://localhost:3000`.
 
+### Deploy do frontend no Render
+
+O frontend pode ser publicado como **Static Site** no Render usando o arquivo `frontend/render.yaml`:
+
+1. Crie um novo Static Site apontando para este repositório e defina `frontend` como o Root Directory.
+2. Use `npm ci && npm run build` como Build Command e `dist` como Publish Directory.
+3. Defina `VITE_API_URL` com a URL pública da API, por exemplo `https://saas-starter-kit-multi-tenant-auth.onrender.com`.
+4. No serviço do backend, defina `FRONTEND_URL` com a URL pública gerada para o frontend.
+
+O Vite injeta `VITE_API_URL` no build; sem essa variável, o desenvolvimento local continua usando `http://127.0.0.1:8000`.
+
+### Role do backend no Supabase
+
+Execute [`backend/supabase_app_role.sql`](backend/supabase_app_role.sql) uma vez no SQL Editor do Supabase, substituindo o placeholder por uma senha aleatória forte. Depois, configure `DATABASE_URL` do backend com o usuário `saas_app`. Não use `postgres`, `service_role` ou outra role com `BYPASSRLS` no backend.
+
+As migrations (`alembic upgrade head`) devem continuar rodando com a role administrativa que é dona do schema. A aplicação usa `SET LOCAL`/`set_config(..., true)` dentro da transação; portanto, o contexto `app.current_org_id` não é reaproveitado entre requisições.
+
 ### Testes
 
 ```bash
@@ -208,9 +227,9 @@ O workflow define `SECRET_KEY` como variável de ambiente exclusiva para o CI, j
 - [x] Migração para PostgreSQL em produção
 - [x] Deploy da API em produção (Render + Supabase)
 - [x] Pipeline de CI/CD com GitHub Actions
-- [ ] Row Level Security (RLS) nas tabelas do Supabase
-- [ ] Expansão da cobertura de testes (incluindo o fluxo completo de API Keys)
-- [ ] Deploy do frontend em produção
+- [x] Row Level Security (RLS) nas tabelas do Supabase com role de aplicação sem `BYPASSRLS`
+- [x] Expansão da cobertura de testes (incluindo o fluxo completo de API Keys)
+- [x] Configuração do deploy do frontend em produção
 - [ ] Docker e Docker Compose completos
 - [ ] Rate limiting por API Key
 - [ ] Escopos/permissões granulares por chave (hoje uma chave tem acesso total à organização)
