@@ -1,8 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import UsagePanel from './UsagePanel';
 import ApiKeysPanel from './ApiKeysPanel';
-
-const API_URL = 'http://127.0.0.1:8000';
+import { API_URL } from './config';
 
 function App() {
   const [mode, setMode] = useState('login');
