@@ -64,6 +64,7 @@ O objetivo é construir uma base sólida usando conceitos presentes em aplicaç�
 - **Integração contínua (CI)** — workflow do GitHub Actions que roda a suíte de testes automaticamente a cada `push` e `pull request` na branch `main`, aplicando as migrations via Alembic antes dos testes
 - **Deploy em produção** — API no Render, PostgreSQL gerenciado pelo Supabase, com pool de conexões configurado para ambiente serverless (`NullPool`)
 - **Role de aplicação dedicada** — o backend deve conectar usando `saas_app`, uma role sem `SUPERUSER` e sem `BYPASSRLS`; migrations continuam sendo executadas com a role administrativa
+- **Rate limiting por API Key** — requisições com `X-API-Key` são validadas contra o hash persistido e limitadas a 100 requisições por minuto, usando Redis para contagem distribuída
 
 ---
 
@@ -199,6 +200,18 @@ O frontend pode ser publicado como **Static Site** no Render usando o arquivo `f
 
 O Vite injeta `VITE_API_URL` no build; sem essa variável, o desenvolvimento local continua usando `http://127.0.0.1:8000`.
 
+### Docker Compose
+
+O Compose local sobe PostgreSQL, Redis e backend em uma rede reproduzível. O backend aguarda os healthchecks, aplica `alembic upgrade head` e inicia o servidor:
+
+```bash
+docker compose up --build
+```
+
+O frontend continua sendo executado separadamente com `npm run dev` ou publicado como Static Site no Render. Para usar rate limiting distribuído, mantenha o Redis disponível e configure `REDIS_URL` no backend.
+
+O header `X-API-Key` habilita a validação e o rate limiting da chave. Os endpoints atuais continuam exigindo JWT; autenticação de integrações por API Key com escopos próprios permanece uma evolução separada.
+
 ### Role do backend no Supabase
 
 Execute [`backend/supabase_app_role.sql`](backend/supabase_app_role.sql) uma vez no SQL Editor do Supabase, substituindo o placeholder por uma senha aleatória forte. Depois, configure `DATABASE_URL` do backend com o usuário `saas_app`. Não use `postgres`, `service_role` ou outra role com `BYPASSRLS` no backend.
@@ -234,8 +247,8 @@ O workflow define `SECRET_KEY` como variável de ambiente exclusiva para o CI, j
 - [ ] Validar RLS no Supabase com `SET ROLE saas_app` e teste manual de isolamento cross-tenant
 - [x] Expansão da cobertura de testes (incluindo o fluxo completo de API Keys)
 - [x] Configuração do deploy do frontend em produção
-- [ ] Docker e Docker Compose completos
-- [ ] Rate limiting por API Key
+- [x] Docker e Docker Compose para o ambiente local (PostgreSQL, Redis e backend)
+- [x] Rate limiting por API Key com Redis
 - [ ] Escopos/permissões granulares por chave (hoje uma chave tem acesso total à organização)
 - [ ] Sistema de permissões mais granular, independente das roles
 - [ ] Evolução do sistema de convites (reenvio, recusa, notificações por e-mail e histórico)
